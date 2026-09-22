@@ -79,6 +79,8 @@ class JobBenchVerifyResponse(BaseVerifyResponse):
 
 
 class JobBenchResourcesServer(SimpleResourcesServer):
+    ray_enabled = False
+
     config: JobBenchConfig
 
     def model_post_init(self, context: Any, /) -> None:

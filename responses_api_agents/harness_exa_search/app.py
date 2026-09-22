@@ -172,6 +172,8 @@ class HarnessExaSearchResponse(BaseVerifyResponse):
 
 
 class HarnessExaSearchAgent(SimpleResponsesAPIAgent):
+    ray_enabled = False
+
     config: HarnessExaSearchConfig
 
     def model_post_init(self, context: Any) -> None:

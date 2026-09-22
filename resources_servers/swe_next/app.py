@@ -140,6 +140,8 @@ class SWENextVerifyResponse(BaseVerifyResponse):
 
 
 class SWENextResourcesServer(SimpleResourcesServer):
+    ray_enabled = False
+
     config: SWENextResourcesServerConfig
 
     def model_post_init(self, context: Any, /) -> None:
