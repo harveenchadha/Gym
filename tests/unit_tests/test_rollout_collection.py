@@ -33,6 +33,11 @@ from pydantic import ValidationError
 
 import nemo_gym.rollout_collection
 import nemo_gym.token_id_capture.delivery
+from nemo_gym._checkpoint.agent import (
+    AGENT_COMPLETION_RECEIPT_HEADER,
+    AgentAcknowledgeRequest,
+    encode_agent_completion_receipt,
+)
 from nemo_gym.base_resources_server import AggregateMetrics, AggregateMetricsRequest
 from nemo_gym.config_types import ConfigError, ConfigPathNotFoundError
 from nemo_gym.global_config import (
@@ -1207,6 +1212,7 @@ class TestRolloutCollection:
         row = {AGENT_REF_KEY_NAME: {"name": "my_agent"}, TASK_INDEX_KEY_NAME: 0, ROLLOUT_INDEX_KEY_NAME: 0}
         response = MagicMock()
         response.status = 200
+        response.headers = {}
 
         mock_server_client = MagicMock()
         mock_server_client.post = AsyncMock(return_value=response)
@@ -1230,6 +1236,7 @@ class TestRolloutCollection:
         row = {AGENT_REF_KEY_NAME: {"name": "my_agent"}, TASK_INDEX_KEY_NAME: 0, ROLLOUT_INDEX_KEY_NAME: 0}
         response = MagicMock()
         response.status = 200
+        response.headers = {}
 
         mock_server_client = MagicMock()
         mock_server_client.post = AsyncMock(return_value=response)
@@ -1246,6 +1253,36 @@ class TestRolloutCollection:
         assert completed.result == {"response": {}}
         assert isinstance(completed.rollout_latency_ms, float)
         assert completed.rollout_latency_ms >= 0
+
+    async def test_run_examples_with_metadata_carries_inline_completion_receipt(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row = {AGENT_REF_KEY_NAME: {"name": "my_agent"}, TASK_INDEX_KEY_NAME: 0, ROLLOUT_INDEX_KEY_NAME: 0}
+        receipt = AgentAcknowledgeRequest(
+            rollout_id="rollout-0",
+            attempt_index=0,
+            execution_generation=1,
+            result_identity="result-0",
+            result_digest="0" * 64,
+        )
+        response = MagicMock()
+        response.status = 200
+        response.headers = {AGENT_COMPLETION_RECEIPT_HEADER: encode_agent_completion_receipt(receipt)}
+
+        mock_server_client = MagicMock()
+        mock_server_client.post = AsyncMock(return_value=response)
+        mock_server_client.global_config_dict = OmegaConf.create({"my_agent": {"responses_api_agents": {"impl": {}}}})
+        monkeypatch.setattr(
+            nemo_gym.rollout_collection, "setup_server_client_utils", lambda *args, **kwargs: mock_server_client
+        )
+        monkeypatch.setattr(nemo_gym.rollout_collection, "raise_for_status", AsyncMock())
+        monkeypatch.setattr(nemo_gym.rollout_collection, "get_response_json", AsyncMock(return_value={"response": {}}))
+
+        returned_row, result, metadata = await next(RolloutCollectionHelper().run_examples_with_metadata([row]))
+
+        assert returned_row is row
+        assert result == {"response": {}}
+        assert metadata == {"completion_receipt": receipt.model_dump(mode="json")}
 
     async def test_run_from_config_does_not_route_failures_unless_asked(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, empty_global_config: MagicMock

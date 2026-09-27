@@ -29,6 +29,7 @@ from omegaconf import OmegaConf
 import nemo_gym.server_utils
 from nemo_gym._checkpoint import (
     AGENT_CHECKPOINT_URL_PREFIX,
+    AGENT_COMPLETION_RECEIPT_HEADER,
     CHECKPOINT_CONTROL_TOKEN_ENV,
     GATED_MODEL_ROUTE_SUFFIXES,
     MODEL_ADMISSION_URL_PREFIX,
@@ -39,6 +40,7 @@ from nemo_gym._checkpoint import (
     ControlCapabilities,
     ControlFence,
     MultiProcessCapability,
+    decode_agent_completion_receipt,
     install_control_plane,
     install_model_admission,
     install_model_checkpoint,
@@ -370,6 +372,9 @@ async def test_simple_agent_restores_next_turn_without_repeating_resource_mutati
         )
         assert completed.status_code == 200
         assert completed.json()["reward"] == 1.0
+        inline_completion_receipt = decode_agent_completion_receipt(
+            completed.headers[AGENT_COMPLETION_RECEIPT_HEADER]
+        ).model_dump(mode="json")
         receipt_response = await source_clients["agent.test"].get(
             f"{AGENT_CHECKPOINT_URL_PREFIX}/completion-receipt",
             params={"rollout_id": COMPLETED_ROLLOUT_ID, "attempt_index": 0},
@@ -377,6 +382,7 @@ async def test_simple_agent_restores_next_turn_without_repeating_resource_mutati
         )
         assert receipt_response.status_code == 200
         completion_receipt = receipt_response.json()
+        assert inline_completion_receipt == completion_receipt
         acknowledgement = await _post_control(
             source_clients["agent.test"],
             f"{AGENT_CHECKPOINT_URL_PREFIX}/acknowledge",
